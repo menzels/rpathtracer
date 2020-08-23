@@ -5,12 +5,14 @@ use renderer::Camera;
 use renderer::Renderer;
 use renderer::Scene;
 mod renderer;
-use rand_xoshiro::rand_core::SeedableRng;
-use rand_xoshiro::Xoshiro512StarStar;
-use std::time::{Duration, Instant};
-
 use log::{debug, error};
 use pixels::{Error, Pixels, SurfaceTexture};
+use rand_xoshiro::rand_core::SeedableRng;
+use rand_xoshiro::Xoshiro512StarStar;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalSize};
 use winit::event::{Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -28,33 +30,54 @@ fn main() -> Result<(), Error> {
 
     let surface_texture = SurfaceTexture::new(p_width, p_height, surface);
     let mut pixels = Pixels::new(SCREEN_WIDTH, SCREEN_HEIGHT, surface_texture)?;
+    let data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![
+        0u8;
+        (SCREEN_HEIGHT * SCREEN_WIDTH * 4)
+            as usize
+    ]));
 
-    let scene = Scene::new_testscene();
-    let camera = Camera::new_testcamera(SCREEN_WIDTH, SCREEN_HEIGHT);
-    let r = Renderer::new(SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize, scene, camera);
+    let (tx, rx) = mpsc::channel();
+    let dc = Arc::clone(&data);
 
-    let mut rng = Xoshiro512StarStar::seed_from_u64(0);
-    let mut frame = 1;
+    let thread = thread::spawn(move || {
+        let scene = Scene::new_testscene();
+        let camera = Camera::new_testcamera(SCREEN_WIDTH, SCREEN_HEIGHT);
+        let r = Renderer::new(SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize, scene, camera);
+
+        let mut rng = Xoshiro512StarStar::seed_from_u64(0);
+        let mut frame = 1;
+
+        loop {
+            let dp = Arc::clone(&data);
+            let now = Instant::now();
+            r.render(dp, &mut rng, frame);
+            if tx.send(frame).is_err() {
+                return;
+            }
+            frame += 1;
+            println!("frame time: {}", now.elapsed().as_millis());
+        }
+    });
 
     event_loop.run(move |event, _, control_flow| {
-        let now = Instant::now();
-        r.render(pixels.get_frame(), &mut rng, frame);
-        frame += 1;
-        println!("frame time: {}", now.elapsed().as_millis());
-
-        if pixels
-            .render()
-            .map_err(|e| error!("pixels.render() failed: {}", e))
-            .is_err()
-        {
-            *control_flow = ControlFlow::Exit;
-            return;
+        if rx.try_recv().is_ok() {
+            {
+                let m = dc.try_lock();
+                if let Ok(data) = m {
+                    pixels.get_frame().copy_from_slice(&data);
+                }
+            }
+            if pixels
+                .render()
+                .map_err(|e| error!("pixels.render() failed: {}", e))
+                .is_err()
+            {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
         }
         // The one and only event that winit_input_helper doesn't have for us...
         if let Event::RedrawRequested(_) = event {
-            // life.draw(pixels.get_frame());
-            r.render(pixels.get_frame(), &mut rng, frame);
-
             if pixels
                 .render()
                 .map_err(|e| error!("pixels.render() failed: {}", e))

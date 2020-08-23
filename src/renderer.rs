@@ -1,10 +1,13 @@
 use glam::Vec3;
 use itertools::Itertools;
 use rand_xoshiro::rand_core::RngCore;
+use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro512StarStar;
+use scoped_threadpool::Pool;
 use std::cmp::Ordering;
 use std::f32;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 fn mean(old: f32, new: f32, cnt: f32) -> f32 {
     let diff = (new - old) / cnt;
@@ -19,10 +22,8 @@ pub struct Renderer {
 }
 
 struct Chunk {
-    x1: usize,
-    x2: usize,
-    y1: usize,
-    y2: usize,
+    i: usize,
+    len: usize,
 }
 
 impl Renderer {
@@ -34,14 +35,13 @@ impl Renderer {
             camera,
         }
     }
-    fn render_chunk(
-        &self,
-        buf: &mut [u8],
-        chunk: Chunk,
-        rng: &mut Xoshiro512StarStar,
-        frame: usize,
-    ) {
-        for (y, x) in (chunk.y1..chunk.y2).cartesian_product(chunk.x1..chunk.x2) {
+    fn render_chunk(&self, buf: &mut [u8], chunk: Chunk, rng: &mut Xoshiro512StarStar) {
+        let start = chunk.i;
+        let end = chunk.i + chunk.len;
+        for (i, (y, x)) in (start..end)
+            .map(|i| (i / self.width, i % self.width))
+            .enumerate()
+        {
             const N: usize = 1;
             let mut col = Vec3::new(0.0, 0.0, 0.0);
             for _ in 0..N {
@@ -49,82 +49,64 @@ impl Renderer {
                 let v: f32 = ((self.height - y - 1) as f32 + rnd(rng)) / self.height as f32;
                 let ray = self.camera.get_ray(u, v, rng);
                 col += self.ray_trace(&ray, 0, rng);
-                // println!("x/y, u/v {}/{}, {}/{}", x, y, u, v);
             }
-            let idx = 4 * (x + y * self.width);
             col /= N as f32;
-            // pix[0] = (col.x().sqrt() * 255.99) as u8;
-            // pix[1] = (col.y().sqrt() * 255.99) as u8;
-            // pix[2] = (col.z().sqrt() * 255.99) as u8;
-            buf[idx] = mean(buf[idx] as f32, col.x().sqrt() * 255.99, frame as f32).round() as u8;
-            buf[idx + 1] =
-                mean(buf[idx + 1] as f32, col.y().sqrt() * 255.99, frame as f32).round() as u8;
-            buf[idx + 2] =
-                mean(buf[idx + 2] as f32, col.z().sqrt() * 255.99, frame as f32).round() as u8;
-            // println!("color {}/{} {:?}", x, y, col);
+            buf[i * 4] = (col.x().sqrt() * 255.99) as u8;
+            buf[i * 4 + 1] = (col.y().sqrt() * 255.99) as u8;
+            buf[i * 4 + 2] = (col.z().sqrt() * 255.99) as u8;
         }
     }
-    pub fn render(&self, buf: &mut [u8], rng: &mut Xoshiro512StarStar, frame: usize) {
-        let chunk_size = 50;
-        let n_threads = 3;
-        let nx = self.width / chunk_size;
-        let ny = self.height / chunk_size;
-        let rx = self.width % chunk_size;
-        let ry = self.height % chunk_size;
-        // let (tx, rx) = mpsc::channel();
+    pub fn render(&self, buf: Arc<Mutex<Vec<u8>>>, rng: &mut Xoshiro512StarStar, frame: usize) {
+        const CHUNK_SIZE: usize = 5000;
+        let chunks = self.width * self.height / CHUNK_SIZE;
+        let n_threads = 8;
+        let (tx, rx) = mpsc::channel();
 
-        for (cx, cy) in (0..nx).cartesian_product(0..ny) {
-            self.render_chunk(
-                buf,
-                Chunk {
-                    x1: cx * chunk_size,
-                    x2: cx * chunk_size + chunk_size,
-                    y1: cy * chunk_size,
-                    y2: cy * chunk_size + chunk_size,
-                },
-                rng,
-                frame,
-            )
-        }
+        let mut pool = Pool::new(n_threads);
 
-        // (0..n_threads)
-        //     .map(|n| {
-        //         std::thread::spawn(move || {
-        //             for r in rx {
-        //                 self.render_chunk(
-        //                     buf,
-        //                     Chunk {
-        //                         x1: cx * chunk_size,
-        //                         x2: cx * chunk_size + chunk_size,
-        //                         y1: cy * chunk_size,
-        //                         y2: cy * chunk_size + chunk_size,
-        //                     },
-        //                     &mut rng.clone(),
-        //                     frame,
-        //                 )
-        //             }
-        //         })
-        //     })
-        //     .for_each(|h| h.join().unwrap())
+        pool.scoped(|scope| {
+            for i in 0..chunks {
+                let tx = tx.clone();
+                let mut buf = [0u8; CHUNK_SIZE * 4];
+                let mut rng = Xoshiro512StarStar::seed_from_u64(rng.next_u64());
+                scope.execute(move || {
+                    self.render_chunk(
+                        &mut buf,
+                        Chunk {
+                            i: i * CHUNK_SIZE,
+                            len: CHUNK_SIZE,
+                        },
+                        &mut rng,
+                    );
+                    tx.send((i, buf)).expect("send failed");
+                });
+            }
+        });
+        let mut buf = buf.lock().unwrap();
+        rx.iter().take(chunks).for_each(|(i, data)| {
+            let start = i * CHUNK_SIZE * 4;
+            let end = (i * CHUNK_SIZE + CHUNK_SIZE) * 4;
+            buf[start..end]
+                .iter_mut()
+                .zip(data.iter())
+                .for_each(|(b, d)| *b = mean(*b as f32, *d as f32, frame as f32).round() as u8)
+        });
     }
     fn ray_hit(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Hit> {
         self.scene
             .primitives
             .iter()
             .filter_map(|p| p.intersect(ray, tmin, tmax))
-            // .filter(|p| p.t > tmin && p.t < tmax)
             .min_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(Ordering::Equal))
     }
     fn ray_trace(&self, ray_in: &Ray, depth: u32, rng: &mut Xoshiro512StarStar) -> Vec3 {
-        const MAX_DEPTH: u32 = 10;
+        const MAX_DEPTH: u32 = 8;
         const MAX_T: f32 = f32::MAX;
         const MIN_T: f32 = 0.001;
-        const NS: usize = 1;
-        // self.ray_count += 1;
+        const NS: usize = 3;
         if let Some(ray_hit) = self.ray_hit(ray_in, MIN_T, MAX_T) {
             if depth < MAX_DEPTH {
-                let mut rng2 = rng.clone();
-                // rng2.jump();
+                let mut rng2 = Xoshiro512StarStar::seed_from_u64(rng.next_u64());
                 return (0..NS)
                     .filter_map(|_| ray_hit.material.scatter(&ray_hit, rng))
                     .fold(Vec3::zero(), |acc, (attenuation, additive, scattered)| {
@@ -174,7 +156,7 @@ trait Primitive {
 struct Sphere {
     center: Vec3,
     radius: f32,
-    material: Box<dyn Material>,
+    material: Box<dyn Material + Send + Sync>,
 }
 
 impl Primitive for Sphere {
@@ -270,7 +252,7 @@ impl Lambertian {
             glow: 0.0,
             roughness,
             transparency,
-            ref_index: 1.46,
+            ref_index: 2.0,
         }
     }
 }
@@ -345,7 +327,7 @@ impl Material for Lambertian {
 }
 
 pub struct Scene {
-    primitives: Vec<Box<dyn Primitive>>,
+    primitives: Vec<Box<dyn Primitive + Send + Sync>>,
 }
 
 impl Scene {
@@ -357,9 +339,9 @@ impl Scene {
                     radius: 1.0,
                     material: Box::new(Lambertian::new_transparent(
                         Vec3::new(1.0, 1.0, 1.0),
-                        0.3,
+                        1.0,
                         0.0,
-                        0.0,
+                        1.0,
                     )),
                 }),
                 Box::new(Sphere {
