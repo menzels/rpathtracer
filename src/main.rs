@@ -5,14 +5,14 @@ use renderer::Camera;
 use renderer::Renderer;
 use renderer::Scene;
 mod renderer;
-use log::{debug, error};
+use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro512StarStar;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalSize};
 use winit::event::{Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -39,7 +39,7 @@ fn main() -> Result<(), Error> {
     let (tx, rx) = mpsc::channel();
     let dc = Arc::clone(&data);
 
-    let thread = thread::spawn(move || {
+    thread::spawn(move || {
         let scene = Scene::new_testscene();
         let camera = Camera::new_testcamera(SCREEN_WIDTH, SCREEN_HEIGHT);
         let r = Renderer::new(SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize, scene, camera);

@@ -1,5 +1,4 @@
 use glam::Vec3;
-use itertools::Itertools;
 use rand_xoshiro::rand_core::RngCore;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro512StarStar;
@@ -59,7 +58,7 @@ impl Renderer {
     pub fn render(&self, buf: Arc<Mutex<Vec<u8>>>, rng: &mut Xoshiro512StarStar, frame: usize) {
         const CHUNK_SIZE: usize = 5000;
         let chunks = self.width * self.height / CHUNK_SIZE;
-        let n_threads = 8;
+        let n_threads = 4;
         let (tx, rx) = mpsc::channel();
 
         let mut pool = Pool::new(n_threads);
@@ -140,7 +139,6 @@ impl Ray {
 
 struct Hit<'a> {
     t: f32,
-    inside: bool,
     point: Vec3,
     normal: Vec3,
     direction: Vec3,
@@ -148,7 +146,7 @@ struct Hit<'a> {
 }
 
 trait Primitive {
-    fn intersect(&self, ray: &Ray, tmin: f32, tmax: f32) -> Option<Hit> {
+    fn intersect(&self, _ray: &Ray, _tmin: f32, _tmax: f32) -> Option<Hit> {
         None
     }
 }
@@ -170,10 +168,8 @@ impl Primitive for Sphere {
         let thc = (self.radius * self.radius - d2).sqrt();
         let mut t0 = tca - thc;
         let t1 = tca + thc;
-        let mut inside = false;
 
         if t0 < tmin {
-            inside = true;
             t0 = t1;
         }
         if t0 < tmin {
@@ -185,7 +181,6 @@ impl Primitive for Sphere {
         let point = ray.point_at_t(t0);
         Some(Hit {
             t: t0,
-            inside,
             normal: (point - self.center) / self.radius,
             point,
             direction: ray.direction,
@@ -195,7 +190,7 @@ impl Primitive for Sphere {
 }
 
 trait Material {
-    fn scatter(&self, hit: &Hit, rng: &mut Xoshiro512StarStar) -> Option<(Vec3, Vec3, Ray)> {
+    fn scatter(&self, _hit: &Hit, _rng: &mut Xoshiro512StarStar) -> Option<(Vec3, Vec3, Ray)> {
         None
     }
 }
