@@ -1,10 +1,18 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use renderer::Camera;
+pub mod base;
+pub mod camera;
+pub mod helpers;
+pub mod material;
+pub mod renderer;
+pub mod scene;
+pub mod sphere;
+
+use camera::Camera;
 use renderer::Renderer;
-use renderer::Scene;
-mod renderer;
+use scene::Scene;
+
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use rand_xoshiro::rand_core::SeedableRng;
