@@ -48,7 +48,7 @@ impl Camera {
         let lookfrom = Vec3::new(40.0, 4.0, 0.0);
         let lookat = Vec3::new(0.0, 2.0, 2.5);
         let dist_to_focus = 40.0;
-        let aperture = 0.1;
+        let aperture = 0.2;
         Camera::new(
             lookfrom,
             lookat,

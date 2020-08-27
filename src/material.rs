@@ -70,7 +70,7 @@ impl Material for Lambertian {
 
             match rnd(rng) {
                 n if n < reflectance => (
-                    Vec3::one() * self.reflect,
+                    self.albedo * self.reflect,
                     refl_dir
                         + if self.roughness > 0.0 {
                             random_in_unit_sphere(rng) * self.roughness
@@ -78,7 +78,7 @@ impl Material for Lambertian {
                             Vec3::zero()
                         },
                 ),
-                _ => (Vec3::one() * self.transparency, refr_dir),
+                _ => (self.albedo * self.transparency, refr_dir),
             }
         } else {
             match rnd(rng) {

@@ -8,6 +8,7 @@ pub mod material;
 pub mod renderer;
 pub mod scene;
 pub mod sphere;
+pub mod triangle;
 
 use camera::Camera;
 use renderer::Renderer;
@@ -38,8 +39,8 @@ fn main() -> Result<(), Error> {
 
     let surface_texture = SurfaceTexture::new(p_width, p_height, surface);
     let mut pixels = Pixels::new(SCREEN_WIDTH, SCREEN_HEIGHT, surface_texture)?;
-    let data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![
-        0u8;
+    let data: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(vec![
+        0f32;
         (SCREEN_HEIGHT * SCREEN_WIDTH * 4)
             as usize
     ]));
@@ -72,7 +73,11 @@ fn main() -> Result<(), Error> {
             {
                 let m = dc.try_lock();
                 if let Ok(data) = m {
-                    pixels.get_frame().copy_from_slice(&data);
+                    pixels
+                        .get_frame()
+                        .iter_mut()
+                        .zip(data.iter())
+                        .for_each(|(f, d)| *f = (d.sqrt() * 255.99) as u8);
                 }
             }
             if pixels
