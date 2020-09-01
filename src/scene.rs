@@ -17,7 +17,7 @@ impl Scene {
                     Vec3::new(3.0, 4.0, 2.0),
                     -3.0,
                     Box::new(Lambertian::new_transparent(
-                        Vec3::new(0.2, 1.0, 0.1),
+                        Vec3::new(1.0, 1.0, 1.0),
                         1.0,
                         0.0,
                         1.0,
@@ -27,7 +27,7 @@ impl Scene {
                     Vec3::new(3.0, 1.0, 2.0),
                     -3.0,
                     Box::new(Lambertian::new_transparent(
-                        Vec3::new(0.2, 1.0, 0.1),
+                        Vec3::new(1.0, 1.0, 1.0),
                         1.0,
                         0.0,
                         1.0,
@@ -67,7 +67,7 @@ impl Scene {
                 Box::new(Sphere {
                     center: Vec3::new(5.0, 3.0, 6.0),
                     radius: 2.0,
-                    material: Box::new(Lambertian::new_glow(Vec3::new(1.0, 0.7, 0.1), 7.0)),
+                    material: Box::new(Lambertian::new_glow(Vec3::new(1.0, 1.0, 1.0), 3.0)),
                 }),
                 // Box::new(Sphere {
                 //     center: Vec3::new(0.0, -1002.0, -5.0),
@@ -98,9 +98,9 @@ impl Scene {
                     -3.0,
                     Box::new(Lambertian::new_transparent(
                         Vec3::new(0.9, 1.0, 0.9),
-                        0.8,
+                        1.0,
                         0.0,
-                        0.8,
+                        1.0,
                     )),
                 )),
                 Box::new(Mesh::new_tetraedron(
@@ -108,9 +108,9 @@ impl Scene {
                     -3.0,
                     Box::new(Lambertian::new_transparent(
                         Vec3::new(0.9, 0.9, 1.0),
-                        0.8,
+                        1.0,
                         0.0,
-                        0.8,
+                        1.0,
                     )),
                 )),
                 Box::new(Plane {

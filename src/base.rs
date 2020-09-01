@@ -42,8 +42,14 @@ pub trait Primitive {
     }
 }
 
+pub struct Scatter {
+    pub attenuation: Vec3,
+    pub additive: Vec3,
+    pub ray: Ray,
+}
+
 pub trait Material {
-    fn scatter(&self, _hit: &Hit, _rng: &mut Xoshiro512StarStar) -> Option<(Vec3, Vec3, Ray)> {
+    fn scatter(&self, _hit: &Hit, _rng: &mut Xoshiro512StarStar) -> Option<Scatter> {
         None
     }
 }

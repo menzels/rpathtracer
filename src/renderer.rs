@@ -77,7 +77,7 @@ impl Renderer {
         let end = chunk.i + chunk.len;
         let mut buf = Vec::with_capacity(chunk.len * 4);
         for (y, x) in (start..end).map(|i| (i / self.width, i % self.width)) {
-            const N: usize = 1000;
+            const N: usize = 300;
             let col = (0..N)
                 .map(|_| {
                     let u: f32 = (x as f32 + rnd(rng)) / self.width as f32;
@@ -112,9 +112,10 @@ impl Renderer {
                 let mut rng2 = Xoshiro512StarStar::seed_from_u64(rng.next_u64());
                 return (0..NS)
                     .filter_map(|_| ray_hit.material.scatter(&ray_hit, rng))
-                    .fold(Vec3::zero(), |acc, (attenuation, additive, scattered)| {
-                        acc + additive
-                            + attenuation * self.ray_trace(&scattered, depth + 1, &mut rng2)
+                    .fold(Vec3::zero(), |acc, scatter| {
+                        acc + scatter.additive
+                            + scatter.attenuation
+                                * self.ray_trace(&scatter.ray, depth + 1, &mut rng2)
                     })
                     / NS as f32;
             }

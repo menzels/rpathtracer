@@ -1,4 +1,4 @@
-use crate::base::{Hit, Material, Ray};
+use crate::base::{Hit, Material, Ray, Scatter};
 use crate::helpers::{random_in_unit_sphere, rnd};
 use glam::Vec3;
 use rand_xoshiro::Xoshiro512StarStar;
@@ -59,14 +59,28 @@ impl Lambertian {
         }
     }
 }
+fn Hue(H: f32) -> Vec3 {
+    let R = ((H * 6.0 - 3.0).abs() - 1.0).max(0.0).min(1.0);
+    let G = (2.0 - (H * 6.0 - 2.0).abs()).max(0.0).min(1.0);
+    let B = (2.0 - (H * 6.0 - 4.0).abs()).max(0.0).min(1.0);
+    Vec3::new(R, G, B)
+}
+
+// fn HSVtoRGB(HSV: Vec3) -> Vec3 {
+//     ((Hue(HSV.x()) - 1.0) * HSV.y() + 1.0) * HSV.z()
+// }
 
 impl Material for Lambertian {
-    fn scatter(&self, hit: &Hit, rng: &mut Xoshiro512StarStar) -> Option<(Vec3, Vec3, Ray)> {
+    fn scatter(&self, hit: &Hit, rng: &mut Xoshiro512StarStar) -> Option<Scatter> {
         let direction = hit.direction.normalize();
         let normal = hit.normal.normalize();
 
+        // if self.transparency > 0.0 {}
+
         let (albedo, target) = if self.transparency > 0.0 {
-            let (reflectance, refl_dir, refr_dir) = fresnel(direction, hit.normal, self.ref_index);
+            let hue = rnd(rng);
+            let (reflectance, refl_dir, refr_dir) =
+                fresnel(direction, hit.normal, self.ref_index + hue / 3.0);
 
             match rnd(rng) {
                 n if n < reflectance => (
@@ -78,12 +92,12 @@ impl Material for Lambertian {
                             Vec3::zero()
                         },
                 ),
-                _ => (self.albedo * self.transparency, refr_dir),
+                _ => (Hue(hue) * 1.9 * self.transparency, refr_dir),
             }
         } else {
             match rnd(rng) {
                 n if n < self.reflect => (
-                    Vec3::one() * self.reflect,
+                    self.albedo * self.reflect,
                     ((direction - 2.0 * direction.dot(normal) * normal).normalize()
                         + random_in_unit_sphere(rng) * self.roughness)
                         .normalize(),
@@ -92,11 +106,11 @@ impl Material for Lambertian {
             }
         };
 
-        Some((
-            albedo,
-            self.albedo * self.glow,
-            Ray::new(hit.point, target.normalize()),
-        ))
+        Some(Scatter {
+            attenuation: albedo,
+            additive: self.albedo * self.glow,
+            ray: Ray::new(hit.point, target.normalize()),
+        })
     }
 }
 
